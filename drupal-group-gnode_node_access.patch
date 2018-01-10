@@ -1,0 +1,158 @@
+diff --git a/modules/gnode/gnode.api.php b/modules/gnode/gnode.api.php
+new file mode 100644
+index 0000000..784ec8c
+--- /dev/null
++++ b/modules/gnode/gnode.api.php
+@@ -0,0 +1,30 @@
++<?php
++
++/**
++ * @file
++ * Hooks defined by the Group Node module.
++ */
++use Drupal\Core\Access\AccessResult;
++
++/**
++ * Allows modules to alter group node access.
++ *
++ * @param \Drupal\Core\Access\AccessResult $access_result
++ *   The access result.
++ * @param array $context
++ *   An array consisting of:
++ *     - `node`: The node object.
++ *     - `account`: The account object.
++ *     - `op`: The operations (view, update, or delete).
++ */
++function hook_gnode_node_access_alter(AccessResult &$access_result, array $context) {
++  // For example, allow owners to always view their own content, regardless of
++  // group membership.
++  /** @var \Drupal\node\NodeInterface $node */
++  $node = $context['node'];
++  /** @var \Drupal\Core\Session\AccountInterface $account */
++  $account = $context['account'];
++  if ($context['op'] === 'view' && ($node->getOwnerId() == $account->id())) {
++    $access_result = AccessResult::allowed();
++  }
++}
+diff --git a/modules/gnode/gnode.module b/modules/gnode/gnode.module
+index 5759c0e..0cfafff 100644
+--- a/modules/gnode/gnode.module
++++ b/modules/gnode/gnode.module
+@@ -102,7 +102,17 @@ function gnode_node_access(NodeInterface $node, $op, AccountInterface $account)
+       break;
+   }
+ 
+-  return AccessResult::forbidden();
++  // If nothing has granted access, allow other modules to alter the forbidden
++  // access result.
++  $access = AccessResult::forbidden();
++  $context = [
++    'node' => $node,
++    'account' => $account,
++    'op' => $op,
++  ];
++  \Drupal::moduleHandler()->alter('gnode_node_access', $access, $context);
++
++  return $access;
+ }
+ 
+ /**
+diff --git a/modules/gnode/tests/modules/gnode_test/gnode_test.info.yml b/modules/gnode/tests/modules/gnode_test/gnode_test.info.yml
+new file mode 100644
+index 0000000..cd36c04
+--- /dev/null
++++ b/modules/gnode/tests/modules/gnode_test/gnode_test.info.yml
+@@ -0,0 +1,7 @@
++name: 'Group node test'
++description: 'Test module for Group Node'
++package: Testing
++type: module
++core: '8.x'
++dependencies:
++  - group:gnode
+diff --git a/modules/gnode/tests/modules/gnode_test/gnode_test.module b/modules/gnode/tests/modules/gnode_test/gnode_test.module
+new file mode 100644
+index 0000000..7fa6c8e
+--- /dev/null
++++ b/modules/gnode/tests/modules/gnode_test/gnode_test.module
+@@ -0,0 +1,13 @@
++<?php
++use Drupal\Core\Access\AccessResult;
++
++/**
++ * @file
++ * Hook implementations for the Group Node Test module.
++ */
++
++function gnode_test_gnode_node_access_alter(AccessResult &$access, array $context) {
++  if (\Drupal::state()->get('gnode_test.always_allow', FALSE)) {
++    $access = AccessResult::allowed();
++  }
++}
+diff --git a/modules/gnode/tests/src/Kernel/GroupNodeAccessTest.php b/modules/gnode/tests/src/Kernel/GroupNodeAccessTest.php
+new file mode 100644
+index 0000000..67ad106
+--- /dev/null
++++ b/modules/gnode/tests/src/Kernel/GroupNodeAccessTest.php
+@@ -0,0 +1,61 @@
++<?php
++
++namespace Drupal\Tests\gnode\Kernel;
++
++use Drupal\Core\Access\AccessResultAllowed;
++use Drupal\Core\Access\AccessResultForbidden;
++
++/**
++ * Tests group node access function.
++ *
++ * @group gnode
++ */
++class GroupNodeAccessTest extends GroupNodeAccessTestBase {
++
++  /**
++   * {@inheritdoc}
++   */
++  public static $modules = ['gnode_test'];
++
++  /**
++   * {@inheritdoc}
++   */
++  protected function setUp() {
++    parent::setUp();
++
++    $this->installSchema('node', ['node_access']);
++  }
++
++  /**
++   * Tests the alter hook from gnode_node_access().
++   */
++  public function testGnodeAccessAlter() {
++    $node = $this->entityTypeManager->getStorage('node')
++      ->create([
++        'type' => 'a',
++        'title' => $this->randomString(),
++      ]);
++    $node->save();
++    $this->groupA2->addContent($node, 'group_node:a');
++
++    $access = gnode_node_access($node, 'update', $this->account);
++    $this->assertInstanceOf(AccessResultAllowed::class, $access);
++
++    $node = $this->entityTypeManager->getStorage('node')
++      ->create([
++        'type' => 'a',
++        'title' => $this->randomString(),
++      ]);
++    $node->save();
++    $this->groupA1->addContent($node, 'group_node:a');
++
++    $access = gnode_node_access($node, 'update', $this->account);
++    $this->assertInstanceOf(AccessResultForbidden::class, $access);
++
++    // Now enable the alter hook.
++    \Drupal::state()->set('gnode_test.always_allow', TRUE);
++    $access = gnode_node_access($node, 'update', $this->account);
++    $this->assertInstanceOf(AccessResultAllowed::class, $access);
++  }
++
++}

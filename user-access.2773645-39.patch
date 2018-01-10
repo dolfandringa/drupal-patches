@@ -1,0 +1,602 @@
+diff --git a/core/modules/user/src/Tests/Views/UserFieldsAccessChangeTest.php b/core/modules/user/src/Tests/Views/UserFieldsAccessChangeTest.php
+new file mode 100644
+index 0000000..93309fc
+--- /dev/null
++++ b/core/modules/user/src/Tests/Views/UserFieldsAccessChangeTest.php
+@@ -0,0 +1,47 @@
++<?php
++
++namespace Drupal\user\Tests\Views;
++
++use Drupal\views\Tests\ViewTestBase;
++use Drupal\views\Tests\ViewTestData;
++
++/**
++ * Checks if user fields access permissions can be modified by other modules.
++ *
++ * @group user
++ */
++class UserFieldsAccessChangeTest extends UserTestBase {
++
++  /**
++   * Views used by this test.
++   *
++   * @var array
++   */
++  public static $testViews = ['test_user_fields_access'];
++
++  /**
++   * Tests if another module can change field access.
++   */
++  public function testUserFieldAccess() {
++    $path = 'test_user_fields_access';
++    $this->drupalGet($path);
++
++    // User has access to name and created date by default.
++    $this->assertText(t('Name'));
++    $this->assertText(t('Created'));
++
++    // User does not by default have access to init, mail and status.
++    $this->assertNoText(t('Init'));
++    $this->assertNoText(t('Email'));
++    $this->assertNoText(t('Status'));
++
++    // Install user_access_test module to grant extra access.
++    \Drupal::service('module_installer')->install(['user_access_test']);
++    $this->drupalGet($path);
++
++    // Access for init, mail and status is added in hook_entity_field_access().
++    $this->assertText(t('Init'));
++    $this->assertText(t('Email'));
++    $this->assertText(t('Status'));
++  }
++}
+diff --git a/core/modules/user/src/UserAccessControlHandler.php b/core/modules/user/src/UserAccessControlHandler.php
+index 712b32a..8ff3299 100644
+--- a/core/modules/user/src/UserAccessControlHandler.php
++++ b/core/modules/user/src/UserAccessControlHandler.php
+@@ -106,7 +106,7 @@ protected function checkFieldAccess($operation, FieldDefinitionInterface $field_
+           return AccessResult::allowed()->cachePerPermissions()->cachePerUser();
+         }
+         else {
+-          return AccessResult::forbidden();
++          return AccessResult::neutral();
+         }
+ 
+       case 'preferred_langcode':
+@@ -116,7 +116,7 @@ protected function checkFieldAccess($operation, FieldDefinitionInterface $field_
+         // Allow view access to own mail address and other personalization
+         // settings.
+         if ($operation == 'view') {
+-          return $is_own_account ? AccessResult::allowed()->cachePerUser() : AccessResult::forbidden();
++          return $is_own_account ? AccessResult::allowed()->cachePerUser() : AccessResult::neutral();
+         }
+         // Anyone that can edit the user can also edit this field.
+         return AccessResult::allowed()->cachePerPermissions();
+@@ -127,14 +127,14 @@ protected function checkFieldAccess($operation, FieldDefinitionInterface $field_
+ 
+       case 'created':
+         // Allow viewing the created date, but not editing it.
+-        return ($operation == 'view') ? AccessResult::allowed() : AccessResult::forbidden();
++        return ($operation == 'view') ? AccessResult::allowed() : AccessResult::neutral();
+ 
+       case 'roles':
+       case 'status':
+       case 'access':
+       case 'login':
+       case 'init':
+-        return AccessResult::forbidden();
++        return AccessResult::neutral();
+     }
+ 
+     return parent::checkFieldAccess($operation, $field_definition, $account, $items);
+diff --git a/core/modules/user/tests/modules/user_access_test/user_access_test.module b/core/modules/user/tests/modules/user_access_test/user_access_test.module
+index 470a76a..def631e 100644
+--- a/core/modules/user/tests/modules/user_access_test/user_access_test.module
++++ b/core/modules/user/tests/modules/user_access_test/user_access_test.module
+@@ -6,6 +6,9 @@
+  */
+ 
+ use Drupal\Core\Access\AccessResult;
++use Drupal\Core\Field\FieldDefinitionInterface;
++use Drupal\Core\Field\FieldItemListInterface;
++use Drupal\Core\Session\AccountInterface;
+ use Drupal\user\Entity\User;
+ 
+ /**
+@@ -22,3 +25,11 @@ function user_access_test_user_access(User $entity, $operation, $account) {
+   }
+   return AccessResult::neutral();
+ }
++
++/**
++ * Implements hook_entity_field_access().
++ */
++function user_access_test_entity_field_access($operation, FieldDefinitionInterface $field_definition, AccountInterface $account, FieldItemListInterface $items = NULL) {
++  // Allow view access for status, init and mail fields.
++  return AccessResult::allowedIf($operation === 'view' && in_array($field_definition->getName(), ['status', 'init', 'mail']));
++}
+diff --git a/core/modules/user/tests/modules/user_test_views/test_views/views.view.test_user_fields_access.yml b/core/modules/user/tests/modules/user_test_views/test_views/views.view.test_user_fields_access.yml
+new file mode 100644
+index 0000000..5bad08f
+--- /dev/null
++++ b/core/modules/user/tests/modules/user_test_views/test_views/views.view.test_user_fields_access.yml
+@@ -0,0 +1,478 @@
++langcode: en
++status: true
++dependencies:
++  module:
++    - user
++id: test_user_fields_access
++label: ''
++module: views
++description: ''
++tag: ''
++base_table: users_field_data
++base_field: uid
++core: 8.x
++display:
++  default:
++    display_plugin: default
++    id: default
++    display_title: Master
++    position: 0
++    display_options:
++      access:
++        type: none
++        options: {  }
++      cache:
++        type: tag
++        options: {  }
++      query:
++        type: views_query
++        options:
++          disable_sql_rewrite: false
++          distinct: false
++          replica: false
++          query_comment: ''
++          query_tags: {  }
++      exposed_form:
++        type: basic
++        options:
++          submit_button: Apply
++          reset_button: false
++          reset_button_label: Reset
++          exposed_sorts_label: 'Sort by'
++          expose_sort_order: true
++          sort_asc_label: Asc
++          sort_desc_label: Desc
++      pager:
++        type: mini
++        options:
++          items_per_page: 10
++          offset: 0
++          id: 0
++          total_pages: null
++          expose:
++            items_per_page: false
++            items_per_page_label: 'Items per page'
++            items_per_page_options: '5, 10, 25, 50'
++            items_per_page_options_all: false
++            items_per_page_options_all_label: '- All -'
++            offset: false
++            offset_label: Offset
++          tags:
++            previous: ‹‹
++            next: ››
++      style:
++        type: table
++        options:
++          grouping: {  }
++          row_class: ''
++          default_row_class: true
++          override: true
++          sticky: false
++          caption: ''
++          summary: ''
++          description: ''
++          columns:
++            name: name
++            status: status
++            mail: mail
++            init: init
++            created: created
++          info:
++            name:
++              sortable: false
++              default_sort_order: asc
++              align: ''
++              separator: ''
++              empty_column: false
++              responsive: ''
++            status:
++              sortable: false
++              default_sort_order: asc
++              align: ''
++              separator: ''
++              empty_column: false
++              responsive: ''
++            mail:
++              sortable: false
++              default_sort_order: asc
++              align: ''
++              separator: ''
++              empty_column: false
++              responsive: ''
++            init:
++              sortable: false
++              default_sort_order: asc
++              align: ''
++              separator: ''
++              empty_column: false
++              responsive: ''
++            created:
++              sortable: false
++              default_sort_order: asc
++              align: ''
++              separator: ''
++              empty_column: false
++              responsive: ''
++          default: '-1'
++          empty_table: false
++      row:
++        type: fields
++      fields:
++        name:
++          id: name
++          table: users_field_data
++          field: name
++          relationship: none
++          group_type: group
++          admin_label: ''
++          label: Name
++          exclude: false
++          alter:
++            alter_text: false
++            text: ''
++            make_link: false
++            path: ''
++            absolute: false
++            external: false
++            replace_spaces: false
++            path_case: none
++            trim_whitespace: false
++            alt: ''
++            rel: ''
++            link_class: ''
++            prefix: ''
++            suffix: ''
++            target: ''
++            nl2br: false
++            max_length: 0
++            word_boundary: false
++            ellipsis: false
++            more_link: false
++            more_link_text: ''
++            more_link_path: ''
++            strip_tags: false
++            trim: false
++            preserve_tags: ''
++            html: false
++          element_type: ''
++          element_class: ''
++          element_label_type: ''
++          element_label_class: ''
++          element_label_colon: true
++          element_wrapper_type: ''
++          element_wrapper_class: ''
++          element_default_classes: true
++          empty: ''
++          hide_empty: false
++          empty_zero: false
++          hide_alter_empty: true
++          click_sort_column: value
++          type: user_name
++          settings:
++            link_to_entity: true
++          group_column: value
++          group_columns: {  }
++          group_rows: true
++          delta_limit: 0
++          delta_offset: 0
++          delta_reversed: false
++          delta_first_last: false
++          multi_type: separator
++          separator: ', '
++          field_api_classes: false
++          entity_type: user
++          entity_field: name
++          plugin_id: field
++        status:
++          id: status
++          table: users_field_data
++          field: status
++          relationship: none
++          group_type: group
++          admin_label: ''
++          label: Status
++          exclude: false
++          alter:
++            alter_text: false
++            text: ''
++            make_link: false
++            path: ''
++            absolute: false
++            external: false
++            replace_spaces: false
++            path_case: none
++            trim_whitespace: false
++            alt: ''
++            rel: ''
++            link_class: ''
++            prefix: ''
++            suffix: ''
++            target: ''
++            nl2br: false
++            max_length: 0
++            word_boundary: true
++            ellipsis: true
++            more_link: false
++            more_link_text: ''
++            more_link_path: ''
++            strip_tags: false
++            trim: false
++            preserve_tags: ''
++            html: false
++          element_type: ''
++          element_class: ''
++          element_label_type: ''
++          element_label_class: ''
++          element_label_colon: true
++          element_wrapper_type: ''
++          element_wrapper_class: ''
++          element_default_classes: true
++          empty: ''
++          hide_empty: false
++          empty_zero: false
++          hide_alter_empty: true
++          click_sort_column: value
++          type: boolean
++          settings:
++            format: default
++            format_custom_true: ''
++            format_custom_false: ''
++          group_column: value
++          group_columns: {  }
++          group_rows: true
++          delta_limit: 0
++          delta_offset: 0
++          delta_reversed: false
++          delta_first_last: false
++          multi_type: separator
++          separator: ', '
++          field_api_classes: false
++          entity_type: user
++          entity_field: status
++          plugin_id: field
++        mail:
++          id: mail
++          table: users_field_data
++          field: mail
++          relationship: none
++          group_type: group
++          admin_label: ''
++          label: Email
++          exclude: false
++          alter:
++            alter_text: false
++            text: ''
++            make_link: false
++            path: ''
++            absolute: false
++            external: false
++            replace_spaces: false
++            path_case: none
++            trim_whitespace: false
++            alt: ''
++            rel: ''
++            link_class: ''
++            prefix: ''
++            suffix: ''
++            target: ''
++            nl2br: false
++            max_length: 0
++            word_boundary: true
++            ellipsis: true
++            more_link: false
++            more_link_text: ''
++            more_link_path: ''
++            strip_tags: false
++            trim: false
++            preserve_tags: ''
++            html: false
++          element_type: ''
++          element_class: ''
++          element_label_type: ''
++          element_label_class: ''
++          element_label_colon: true
++          element_wrapper_type: ''
++          element_wrapper_class: ''
++          element_default_classes: true
++          empty: ''
++          hide_empty: false
++          empty_zero: false
++          hide_alter_empty: true
++          click_sort_column: value
++          type: basic_string
++          settings: {  }
++          group_column: value
++          group_columns: {  }
++          group_rows: true
++          delta_limit: 0
++          delta_offset: 0
++          delta_reversed: false
++          delta_first_last: false
++          multi_type: separator
++          separator: ', '
++          field_api_classes: false
++          entity_type: user
++          entity_field: mail
++          plugin_id: field
++        init:
++          id: init
++          table: users_field_data
++          field: init
++          relationship: none
++          group_type: group
++          admin_label: ''
++          label: Init
++          exclude: false
++          alter:
++            alter_text: false
++            text: ''
++            make_link: false
++            path: ''
++            absolute: false
++            external: false
++            replace_spaces: false
++            path_case: none
++            trim_whitespace: false
++            alt: ''
++            rel: ''
++            link_class: ''
++            prefix: ''
++            suffix: ''
++            target: ''
++            nl2br: false
++            max_length: 0
++            word_boundary: true
++            ellipsis: true
++            more_link: false
++            more_link_text: ''
++            more_link_path: ''
++            strip_tags: false
++            trim: false
++            preserve_tags: ''
++            html: false
++          element_type: ''
++          element_class: ''
++          element_label_type: ''
++          element_label_class: ''
++          element_label_colon: true
++          element_wrapper_type: ''
++          element_wrapper_class: ''
++          element_default_classes: true
++          empty: ''
++          hide_empty: false
++          empty_zero: false
++          hide_alter_empty: true
++          click_sort_column: value
++          type: basic_string
++          settings: {  }
++          group_column: value
++          group_columns: {  }
++          group_rows: true
++          delta_limit: 0
++          delta_offset: 0
++          delta_reversed: false
++          delta_first_last: false
++          multi_type: separator
++          separator: ', '
++          field_api_classes: false
++          entity_type: user
++          entity_field: init
++          plugin_id: field
++        created:
++          id: created
++          table: users_field_data
++          field: created
++          relationship: none
++          group_type: group
++          admin_label: ''
++          label: Created
++          exclude: false
++          alter:
++            alter_text: false
++            text: ''
++            make_link: false
++            path: ''
++            absolute: false
++            external: false
++            replace_spaces: false
++            path_case: none
++            trim_whitespace: false
++            alt: ''
++            rel: ''
++            link_class: ''
++            prefix: ''
++            suffix: ''
++            target: ''
++            nl2br: false
++            max_length: 0
++            word_boundary: true
++            ellipsis: true
++            more_link: false
++            more_link_text: ''
++            more_link_path: ''
++            strip_tags: false
++            trim: false
++            preserve_tags: ''
++            html: false
++          element_type: ''
++          element_class: ''
++          element_label_type: ''
++          element_label_class: ''
++          element_label_colon: true
++          element_wrapper_type: ''
++          element_wrapper_class: ''
++          element_default_classes: true
++          empty: ''
++          hide_empty: false
++          empty_zero: false
++          hide_alter_empty: true
++          click_sort_column: value
++          type: timestamp
++          settings:
++            date_format: medium
++            custom_date_format: ''
++            timezone: ''
++          group_column: value
++          group_columns: {  }
++          group_rows: true
++          delta_limit: 0
++          delta_offset: 0
++          delta_reversed: false
++          delta_first_last: false
++          multi_type: separator
++          separator: ', '
++          field_api_classes: false
++          entity_type: user
++          entity_field: created
++          plugin_id: field
++      filters: {  }
++      sorts: {  }
++      title: ''
++      header: {  }
++      footer: {  }
++      empty: {  }
++      relationships: {  }
++      arguments: {  }
++      display_extenders: {  }
++    cache_metadata:
++      max-age: 0
++      contexts:
++        - 'languages:language_content'
++        - 'languages:language_interface'
++        - url.query_args
++      tags: {  }
++  page_1:
++    display_plugin: page
++    id: page_1
++    display_title: Page
++    position: 1
++    display_options:
++      display_extenders: {  }
++      path: test_user_fields_access
++    cache_metadata:
++      max-age: 0
++      contexts:
++        - 'languages:language_content'
++        - 'languages:language_interface'
++        - url.query_args
++      tags: {  }
