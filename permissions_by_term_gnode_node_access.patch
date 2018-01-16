@@ -1,0 +1,29 @@
+diff --git a/permissions_by_term.module b/permissions_by_term/module
++++ a/permissions_by_term.module
++++ b/permissions_by_term.module
+@@ -246,6 +246,24 @@
+ }
+ 
+ /**
++ * Implements hook_gnode_node_access()
++ *
++ *
++ */
++function permissions_by_term_gnode_node_access_alter(AccessResult &$access_res
++  $node = $context['node'];
++  $account = $context['account'];
++  $op = $context['op'];
++  \Drupal::logger('permissions_by_term')->notice('permission before %perm', ar
++  $res = permissions_by_term_node_access($node, $op, $account);
++  //if($res->isNeutral() && $op =='view'){
++  //  $res = AccessResult::allowed();
++  //} 
++  $access_result = $res;
++  \Drupal::logger('permissions_by_term')->notice('permission after %perm', arr
++}
++
++/**
+  * Implements hook_node_access().
+  *
+  * Forwards user by drupal_access_denied(); to an access denied page, if a
+
