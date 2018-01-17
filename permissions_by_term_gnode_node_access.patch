@@ -1,25 +1,22 @@
 diff --git a/permissions_by_term.module b/permissions_by_term/module
 +++ a/permissions_by_term.module
 +++ b/permissions_by_term.module
-@@ -246,6 +246,24 @@
+@@ -246,6 +246,21 @@
  }
  
  /**
-+ * Implements hook_gnode_node_access()
++ * Implements hook_gnode_node_access_alter()
 + *
 + *
 + */
-+function permissions_by_term_gnode_node_access_alter(AccessResult &$access_res
++function permissions_by_term_gnode_node_access_alter(AccessResult &$access_result, array $context) {
 +  $node = $context['node'];
 +  $account = $context['account'];
 +  $op = $context['op'];
-+  \Drupal::logger('permissions_by_term')->notice('permission before %perm', ar
 +  $res = permissions_by_term_node_access($node, $op, $account);
-+  //if($res->isNeutral() && $op =='view'){
-+  //  $res = AccessResult::allowed();
-+  //} 
++  \Drupal::logger('permissions_by_term')->notice('hook_gnode_node_access_alter returning @perm.',
++                                                 array('@perm'=>get_class($res)));
 +  $access_result = $res;
-+  \Drupal::logger('permissions_by_term')->notice('permission after %perm', arr
 +}
 +
 +/**
