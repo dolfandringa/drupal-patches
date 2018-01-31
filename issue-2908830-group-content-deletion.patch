@@ -1,0 +1,96 @@
+From d265f2934a8751f180f32ef193f1fd1b7a20ff52 Mon Sep 17 00:00:00 2001
+From: jhedstrom
+Date: Fri, 20 Oct 2017 13:50:51 +0200
+Subject: Issue #2908830 by jhedstrom, mgalalm, dravenk: Crash when clicking
+ "delete" any group content
+
+---
+ src/Entity/GroupContent.php           |  4 +++
+ tests/src/Kernel/GroupContentTest.php | 59 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 63 insertions(+)
+ create mode 100644 tests/src/Kernel/GroupContentTest.php
+
+diff --git a/src/Entity/GroupContent.php b/src/Entity/GroupContent.php
+index e94d533..ca91e98 100644
+--- a/src/Entity/GroupContent.php
++++ b/src/Entity/GroupContent.php
+@@ -133,6 +133,10 @@ class GroupContent extends ContentEntityBase implements GroupContentInterface {
+   protected function urlRouteParameters($rel) {
+     $uri_route_parameters = parent::urlRouteParameters($rel);
+     $uri_route_parameters['group'] = $this->getGroup()->id();
++    // These routes depend on the plugin ID.
++    if (in_array($rel, ['add-form', 'create-form'])) {
++      $uri_route_parameters['plugin_id'] = $this->getContentPlugin()->getPluginId();
++    }
+     return $uri_route_parameters;
+   }
+ 
+diff --git a/tests/src/Kernel/GroupContentTest.php b/tests/src/Kernel/GroupContentTest.php
+new file mode 100644
+index 0000000..c7863ed
+--- /dev/null
++++ b/tests/src/Kernel/GroupContentTest.php
+@@ -0,0 +1,59 @@
++<?php
++
++namespace Drupal\Tests\group\Kernel;
++
++/**
++ * Tests for the GroupContent entity.
++ *
++ * @group group
++ *
++ * @coversDefaultClass \Drupal\group\Entity\GroupContent
++ */
++class GroupContentTest extends GroupKernelTestBase {
++
++  /**
++   * Ensure entity url templates are functional.
++   *
++   * @covers ::urlRouteParameters
++   */
++  public function testUrlRouteParameters() {
++    $group = $this->createGroup();
++    $account = $this->createUser();
++    $group->addContent($account, 'group_membership');
++    $group_content = $group->getContent('group_membership');
++    foreach ($group_content as $item) {
++      // Canonical.
++      $expected = "/group/{$group->id()}/content/{$item->id()}";
++      $this->assertEquals($expected, $item->toUrl()->toString());
++
++      // Add form.
++      $expected = "/group/{$group->id()}/content/add/group_membership?group_content_type=default-group_membership";
++      $this->assertEquals($expected, $item->toUrl('add-form')->toString());
++
++      // Add page.
++      $expected = "/group/{$group->id()}/content/add";
++      $this->assertEquals($expected, $item->toUrl('add-page')->toString());
++
++      // Collection.
++      $expected = "/group/{$group->id()}/content";
++      $this->assertEquals($expected, $item->toUrl('collection')->toString());
++
++      // Create form.
++      $expected = "/group/{$group->id()}/content/create/group_membership?group_content={$item->id()}";
++      $this->assertEquals($expected, $item->toUrl('create-form')->toString());
++
++      // Create page.
++      $expected = "/group/{$group->id()}/content/create?group_content={$item->id()}";
++      $this->assertEquals($expected, $item->toUrl('create-page')->toString());
++
++      // Delete form.
++      $expected = "/group/{$group->id()}/content/{$item->id()}/delete";
++      $this->assertEquals($expected, $item->toUrl('delete-form')->toString());
++
++      // Edit form.
++      $expected = "/group/{$group->id()}/content/{$item->id()}/edit";
++      $this->assertEquals($expected, $item->toUrl('edit-form')->toString());
++    }
++  }
++
++}
+-- 
+cgit v1.1
+
+
