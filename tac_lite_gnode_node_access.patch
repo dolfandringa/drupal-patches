@@ -1,0 +1,25 @@
+diff --git a/tac_lite.module b/tac_lite/module
++++ a/tac_lite.module
++++ b/tac_lite.module
+@@ -48,5 +46,20 @@
+ }
+ 
+ /**
++ * Implements hook_gnode_node_access_alter()
++ *
++ *
++ */
++function tac_lite_gnode_node_access_alter(AccessResult &$access_result, array $context) {
++  $node = $context['node'];
++  $account = $context['account'];
++  $op = $context['op'];
++  $res = module_invoke('tac_lite','node_access', $node, $op, $account);
++  \Drupal::logger('tac_lite')->notice('hook_gnode_node_access_alter returning @perm.',
++                                      array('@perm'=>get_class($res)));
++  $access_result = $res;
++}
++
++/**
+  * Implements hook_node_access_records().
+  */
+
